@@ -1,0 +1,8 @@
+{
+    "board": "MySensors:nRF5:MyBoard_nRF51822",
+    "output": "./ArduinoOutput",
+    "configuration": "chip=xxaa,bootcode=none,lfclk=lfxo",
+    "sketch": "mysEfektaLib.ino",
+    "port": "COM6",
+    "programmer": "J-Link"
+}
