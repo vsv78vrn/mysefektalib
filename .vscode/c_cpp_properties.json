@@ -3,12 +3,14 @@
         {
             "name": "Win32",
             "includePath": [
-                "C:\\Users\\Alex\\Documents\\Arduino\\libraries\\MySensors\\**",
                 "C:\\Users\\Alex\\AppData\\Local\\Arduino15\\packages\\sandeepmistry\\tools\\**",
                 "C:\\Users\\Alex\\AppData\\Local\\Arduino15\\packages\\sandeepmistry\\hardware\\nRF5\\0.6.0\\**",
                 "C:\\Users\\Alex\\AppData\\Local\\Arduino15\\packages\\MySensors\\hardware\\nRF5\\0.3.0\\**",
-                "${workspaceFolder}/**"
+                "${workspaceRoot}"
             ],
+            "browse": {
+                "path": []
+            },
             "defines": ["USBCON"],
             "forcedInclude": [],
             "intelliSenseMode": "msvc-x64",

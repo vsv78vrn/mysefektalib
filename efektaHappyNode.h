@@ -9,8 +9,6 @@ Library HappyNode
 Resistant to connection quality Node
 */
 
-#include <stdint.h>
-
 #define happyInit() happyNode.init()
 #define happyConfig() happyNode.config()
 #define happySendSketchInfo(x, y) happyNode.sendSketchInform((x), (y))
