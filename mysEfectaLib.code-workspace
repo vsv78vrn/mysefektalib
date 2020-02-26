@@ -7,7 +7,9 @@
 	"settings": {
 		"files.associations": {
 			"ios": "cpp",
-			"*.tcc": "cpp"
+			"*.tcc": "cpp",
+			"xlocale": "cpp",
+			"functional": "cpp"
 		}
 	}
 }
