@@ -19,7 +19,8 @@ int16_t myTransportComlpeteMS;
 
 #define MY_SEND_RSSI 254
 #define MY_SEND_BATTERY 253
-#define MY_SEND_REBOOT_REASON 252
+#define MY_SEND_RESET_REASON 252
+#define MY_RESET_REASON_TEXT
 
 #define PIN_1 (1)
 #define PIN_2 (2)

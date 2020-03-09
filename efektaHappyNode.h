@@ -16,8 +16,8 @@ Resistant to connection quality Node
 
 static_assert(sizeof(MY_TRANSPORT_WAIT_READY_MS) == 2, "INVALID DEFENITION MY_TRANSPORT_WAIT_READY_MS");
 
-#ifdef MY_SEND_REBOOT_REASON
-static_assert(MY_SEND_REBOOT_REASON >= 0 && MY_SEND_REBOOT_REASON <= 254, "INVALID DEFENITION MY_SEND_REBOOT_REASON");
+#ifdef MY_SEND_RESET_REASON
+static_assert(MY_SEND_RESET_REASON >= 0 && MY_SEND_RESET_REASON <= 254, "INVALID DEFENITION MY_SEND_RESET_REASON");
 #endif
 
 #ifdef MY_SEND_RSSI
@@ -159,13 +159,13 @@ bool CHappyNode::checkAck(const MyMessage &message){
     return false;
 }
 
-#ifdef MY_SEND_REBOOT_REASON
+#ifdef MY_SEND_RESET_REASON
 void CHappyNode::sendResetReason(){
     uint16_t nTry = 0;
     bool isSend = false;
     String reason;
 
-#ifdef MY_REBOOT_REASON_TEXT
+#ifdef MY_RESET_REASON_TEXT
     if (NRF_POWER->RESETREAS == 0) reason = "POWER_ON"; 
     else {
         if (NRF_POWER->RESETREAS & (1UL << 0)) reason += "PIN ";
@@ -181,7 +181,7 @@ void CHappyNode::sendResetReason(){
 #endif
 
     while (!isSend && nTry++ < 10) {
-        isSend = sendMsg(MyMessage(MY_SEND_REBOOT_REASON, V_VAR2).set(reason.c_str()));
+        isSend = sendMsg(MyMessage(MY_SEND_RESET_REASON, V_VAR2).set(reason.c_str()));
     }
     if (isSend) NRF_POWER->RESETREAS = (0xFFFFFFFF);
 }
@@ -268,7 +268,7 @@ void CHappyNode::config() {
             CORE_DEBUG(PSTR(">>>>>>>> MyS: TRANSPORT ERR. PARAMS LOAD FROM EEPROM\n"));
             CORE_DEBUG(PSTR(">>>>>>>> MyS: ENTERY HAPPY MODE\n"));
     }
-#ifdef MY_SEND_REBOOT_REASON
+#ifdef MY_SEND_RESET_REASON
     sendResetReason();
 #endif    
     //     if (isTransportReady()){ // законектилась
@@ -478,8 +478,8 @@ void presentation(){
 #ifdef MY_SEND_BATTERY_VOLTAGE
     happyNode.perform(MY_SEND_BATTERY, S_MULTIMETER, PSTR("Battery voltage"));
 #endif
-#ifdef MY_SEND_REBOOT_REASON
-    happyNode.perform(MY_SEND_REBOOT_REASON, S_CUSTOM, PSTR("Reset reason"));
+#ifdef MY_SEND_RESET_REASON
+    happyNode.perform(MY_SEND_RESET_REASON, S_CUSTOM, PSTR("Reset reason"));
 #endif
      happyNode.presentationFinish();
 }
