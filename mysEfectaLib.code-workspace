@@ -9,7 +9,8 @@
 			"ios": "cpp",
 			"*.tcc": "cpp",
 			"xlocale": "cpp",
-			"functional": "cpp"
+			"functional": "cpp",
+			"random": "cpp"
 		}
 	}
 }

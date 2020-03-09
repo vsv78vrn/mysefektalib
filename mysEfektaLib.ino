@@ -8,15 +8,18 @@ Demo for library by Berk (Efekta)
 gpiot, happy_node
 */
 
-#define DEBUG_NEW_NODE
-
 #define MY_DEBUG
 #ifndef MY_DEBUG
 #define MY_DISABLED_SERIAL
 #endif
 #define MY_RADIO_NRF5_ESB
+
 int16_t myTransportComlpeteMS;
 #define MY_TRANSPORT_WAIT_READY_MS (myTransportComlpeteMS)
+
+#define MY_SEND_RSSI 254
+#define MY_SEND_BATTERY 253
+#define MY_SEND_REBOOT_REASON 252
 
 #define PIN_1 (1)
 #define PIN_2 (2)
@@ -34,11 +37,12 @@ MyMessage msgPin1(CHILD_ID_PIN_1, V_TRIPPED);
 MyMessage msgPin2(CHILD_ID_PIN_2, V_TRIPPED);
 MyMessage msgVirt(CHILD_ID_VIRT, V_VAR);
 
-CHappyNode happyNode(100, 101, 102, 103, myTransportComlpeteMS);
-CDream interruptedSleep(1); // количество пинов по которым будут прерывания сна
+CHappyNode happyNode(100); // Адрес c которого будут храниться пользовательские данные
+CDream interruptedSleep(2); // количество пинов по которым будут прерывания сна
 
 void before() {
     happyInit();
+    happyNode.setMaxTry(CHappyNode::TRY_SEND_NO_ECHO, 2);
 }
 
 void setup(){
