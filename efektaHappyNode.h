@@ -48,8 +48,9 @@ extern class CHappyNode{
     uint8_t sensorsCounter;
     
     int16_t& myTransportWaitReady;
-    bool isLostTransport = false;
-    uint8_t failureTry = 0;
+    bool isReceivedEcho = true;
+    uint8_t noEchoTry = 0;
+    uint8_t noParentTry = 0;
     
     bool isSendAck, isPresentAck;
 
@@ -142,20 +143,20 @@ void CHappyNode::perform(const uint8_t childSensorId, const mysensors_sensor_t s
 
 bool CHappyNode::checkAck(const MyMessage &message){
      if (mGetCommand(message) == C_PRESENTATION){
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: ACK OF THE PRESENTATION RECEIVED\n"));
+        //CORE_DEBUG(PSTR(">>>>>>>> MyS: ACK OF THE PRESENTATION RECEIVED\n"));
         isPresentAck = true;
         return true;
     }
-    if (mGetCommand(message) == C_SET && message.isEcho()) {
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: ACK OF THE SEND RECEIVED\n"));
+    if ((mGetCommand(message) == C_SET || mGetCommand(message) == C_INTERNAL && message.getType() == I_BATTERY_LEVEL) && message.isEcho()) {
+        //CORE_DEBUG(PSTR(">>>>>>>> MyS: ACK OF THE SEND RECEIVED\n"));
         isSendAck = true;
         return true;
     }
-    if (mGetCommand(message) == C_INTERNAL && message.getType() == I_BATTERY_LEVEL && message.isEcho()) {
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: ACK OF THE BATT LEVEL RECEIVED \n"));
-        isSendAck = true;
-        return true;
-    }
+    // if (mGetCommand(message) == C_INTERNAL && message.getType() == I_BATTERY_LEVEL && message.isEcho()) {
+    //     //CORE_DEBUG(PSTR(">>>>>>>> MyS: ACK OF THE BATT LEVEL RECEIVED \n"));
+    //     isSendAck = true;
+    //     return true;
+    //}
     return false;
 }
 
@@ -264,7 +265,7 @@ void CHappyNode::config() {
             _transportConfig.parentNodeId = loadState(parentIdAddr);
             _transportConfig.distanceGW = loadState(distanceGWAddr);
             setHappyMode();
-            isLostTransport = true;
+            noParentTry++;
             CORE_DEBUG(PSTR(">>>>>>>> MyS: TRANSPORT ERR. PARAMS LOAD FROM EEPROM\n"));
             CORE_DEBUG(PSTR(">>>>>>>> MyS: ENTERY HAPPY MODE\n"));
     }
@@ -315,29 +316,27 @@ void CHappyNode::setHappyMode() {
 }
 
 void CHappyNode::run(){
-    if (isTransportReady() == true) { //Если есть связь
-        //если была потеря связи - проверяем
-        //если родителя нет - ищем
-        //проверка презентаций
-        if (isLostTransport) {
+    if (isTransportReady() == true) { 
+        if (!isReceivedEcho) noEchoTry++; else noEchoTry = 0;
+        if (noEchoTry > maxNoEchoSendTry){
             checkParent();
-            //failureTry = 0;
+            if (noParentTry > maxNoParentTry && maxNoParentTry > 0) hwReboot();
         }
+        if (!getPresentComplete()) presentation();
 #ifdef MY_SEND_RSSI
         sendSignalStrength();
 #endif
 #ifdef MY_SEND_BATTERY
         sendBattery();
 #endif
-
     }
+    isReceivedEcho = false;
 
-    if (_transportSM.failureCounter > 0 || failureTry >= maxNoEchoSendTry) {
+    if (_transportSM.failureCounter > 0 ) {
         CORE_DEBUG(PSTR(">>>>>>>> MyS: ENTERY HAPPY MODE\n"));
         _transportConfig.parentNodeId = loadState(parentIdAddr);
         _transportConfig.nodeId = loadState(idAddr); //myid;
         _transportConfig.distanceGW = loadState(distanceGWAddr);
-        isLostTransport = true;
         setHappyMode();
      }
 }
@@ -351,27 +350,28 @@ void CHappyNode::checkParent(){
         CORE_DEBUG(PSTR(">>>>>>>> MyS: PARENT RESPONSE FOUND\n"));
         CORE_DEBUG(PSTR(">>>>>>>> MyS: Parent = %i (%i)\n"), _transportConfig.parentNodeId, _msg.getSender());
         transportSwitchSM(stParent);
-        isLostTransport = false;
-        failureTry = 0;
-    }
+        noParentTry = 0;
+     }
     else{
         _transportSM.findingParentNode = false;
         CORE_DEBUG(PSTR(">>>>>>>> MyS: PARENT RESPONSE NOT FOUND\n"));
         _transportSM.failedUplinkTransmissions = 0;
+        noParentTry++;
     }
 }
 
 bool CHappyNode::sendMsg(MyMessage& message, const uint8_t tryNum){
-    for (int i=0; i<tryNum; i++){
+    bool isParentGateSend = (message.getDestination() == 0 || message.getDestination() == getParentNodeId()); // если отправка на гейт или на парент
+    for (int i=0; i < tryNum; i++){
         if (_transportConfig.parentNodeId == 0) {
             if (send(message)){
                 CORE_DEBUG(PSTR(">>>>>>>> MyS: SEND OK TO GW\n"));
-                failureTry = 0;
+                isReceivedEcho = isParentGateSend;
+                break;
             }
             else {
                 _transportSM.failedUplinkTransmissions = 0;
                 CORE_DEBUG(PSTR(">>>>>>>> MyS: ERR SEND TO GW\n"));
-                failureTry++;
             }
         }
         else {
@@ -379,13 +379,13 @@ bool CHappyNode::sendMsg(MyMessage& message, const uint8_t tryNum){
             send(message, true);
             wait(2500, C_SET, message.getType());
             if (isSendAck){
-                CORE_DEBUG(PSTR(">>>>>>>> MyS: SEND OK. NORMAL SEND TO ROUTER\n"));
-                failureTry = 0;
+                isReceivedEcho = isParentGateSend;
+                CORE_DEBUG(PSTR(">>>>>>>> MyS: SEND OK TO ROUTER\n"));
+                break;
             }
             else {
                 _transportSM.failedUplinkTransmissions = 0;
                 CORE_DEBUG(PSTR(">>>>>>>> MyS: ERR SEND TO ROUTER\n"));
-                failureTry++;
             }
         }
         if (i < tryNum -1) wait(200);
