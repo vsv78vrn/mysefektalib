@@ -27,7 +27,7 @@ extern "C" {
 #endif
 // nrf_gpio_pin_pull_t = {NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_PULLDOWN}
  
-class CDream {
+extern class CDream {
 public:
     enum ePinsIntEvent { NRF_PIN_HIGH_TO_LOW, NRF_PIN_LOW_TO_HIGH, NRF_PIN_GHANGE };
     struct sIntGPIOT {
@@ -53,9 +53,8 @@ public:
     inline ePinsIntEvent getPinEvent(uint8_t idx) {return pins[idx].event;}
     inline uint8_t getPinGPIO(uint8_t idx) {return pins[idx].gpio;}
     inline void setWakeupRegim(uint8_t regim) {wakeUpRegim = pins[regim].gpio;}
-};
+} interruptedSleep;
 
-extern CDream interruptedSleep;
 uint32_t CDream::wakeUpRegim = 0;
 app_gpiote_user_id_t CDream::m_gpiote_user_id = 0;
 
