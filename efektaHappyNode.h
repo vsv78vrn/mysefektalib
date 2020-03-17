@@ -10,6 +10,8 @@ Resistant to connection quality Node
 */
 #pragma once
 
+#include "app_util.h"
+
 #ifdef MY_PASSIVE_NODE
 #error "NOT FOR PASSIVE NODE"
 #endif
@@ -66,6 +68,8 @@ extern class CHappyNode{
  
     uint8_t *sensorsPresentComplete = nullptr;
     struct {unsigned parent:1; unsigned sketch:1;} isPresentComplete; 
+    void presentationStart(); 
+    void presentationFinish();
     bool performDuty(const uint8_t, const mysensors_sensor_t, const char *, bool = true);
     bool getPresentComplete();
     void loadPresentState();
@@ -78,8 +82,6 @@ public:
     void init();
     void setMaxTry(const try_num_mode_e , const uint8_t );
     void config();
-    void presentationStart(); 
-    void presentationFinish();
     void sendSketchInform(const char *, const char *);
     inline void perform(const uint8_t id, const mysensors_sensor_t type, const char *s) { performDuty(id, type, s, false); }
     bool checkAck(const MyMessage &);
@@ -88,6 +90,8 @@ public:
     bool sendSignalStrength(uint8_t );
     bool sendBattery(int16_t = -1);
     void sendResetReason();
+
+    friend void presentation();
 } happyNode;
 
 void CHappyNode::sendSketchInform(const char *sketch_name, const char *sketch_version){
@@ -357,6 +361,9 @@ void CHappyNode::checkParent(){
             isHappyMode = false;
             return;
         }
+        else {
+            setHappyMode();
+        }
      }
     _transportSM.findingParentNode = false;
     CORE_DEBUG(PSTR(">>>>>>>> MyS: PARENT RESPONSE NOT FOUND\n"));
@@ -478,9 +485,13 @@ void presentation(){
      happyPresentation();
 #ifdef MY_SEND_RSSI
     happyNode.perform(MY_SEND_RSSI, S_CUSTOM, PSTR("Signal quality in %"));
+#else
+    happyNode.isSignalStrengthPresent = false; 
 #endif
 #ifdef MY_SEND_BATTERY_VOLTAGE
     happyNode.perform(MY_SEND_BATTERY, S_MULTIMETER, PSTR("Battery voltage"));
+#else
+    happyNode.isBatteryVoltagePresent = false;  
 #endif
 #ifdef MY_SEND_RESET_REASON
     happyNode.perform(MY_SEND_RESET_REASON, S_CUSTOM, PSTR("Reset reason"));

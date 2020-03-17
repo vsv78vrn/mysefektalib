@@ -17,8 +17,8 @@ gpiot, happy_node
 int16_t myTransportComlpeteMS;
 #define MY_TRANSPORT_WAIT_READY_MS (myTransportComlpeteMS)
 
-#define MY_SEND_RSSI 254
-#define MY_SEND_BATTERY 253
+//#define MY_SEND_RSSI 254
+//#define MY_SEND_BATTERY 253
 #define MY_SEND_RESET_REASON 252
 #define MY_RESET_REASON_TEXT
 
@@ -31,43 +31,41 @@ int16_t myTransportComlpeteMS;
 
 #include <MySensors.h>
 
-#include "efektaGpiot.h"
 #include "efektaHappyNode.h"
 
-MyMessage msgPin1(CHILD_ID_PIN_1, V_TRIPPED);
-MyMessage msgPin2(CHILD_ID_PIN_2, V_TRIPPED);
 MyMessage msgVirt(CHILD_ID_VIRT, V_VAR);
 
 CHappyNode happyNode(100); // Адрес c которого будут храниться пользовательские данные
-CDream interruptedSleep(2); // количество пинов по которым будут прерывания сна
 
 void before() {
     happyInit();
-    happyNode.setMaxTry(CHappyNode::TRY_SEND_NO_ECHO, 2);
 }
 
 void setup(){
-    addDreamPin(PIN_1, NRF_GPIO_PIN_PULLUP, CDream::NRF_PIN_GHANGE); // добавляем описание пинов
-    addDreamPin(PIN_2, NRF_GPIO_PIN_PULLUP, CDream::NRF_PIN_GHANGE); 
-    initDream();
     happyConfig();
 }
 
 void happyPresentation() {
     happySendSketchInfo("HappyNode & Dream test", "V1.0");
-    happyPresent(CHILD_ID_PIN_1, S_BINARY, "STATUS Pin1");
-    happyPresent(CHILD_ID_PIN_2, S_BINARY, "STATUS Pin2");
     happyPresent(CHILD_ID_VIRT, S_CUSTOM, "STATUS Virtual");
 }
 
 void loop() {
     happyProcess();
-    int8_t wakeupReson = dream(10000);
+
+    const uint32_t t = millis();
+    static uint32_t prev_t = t;
+
+    if (t - prev_t >= 20000) {
+        happyNode.sendBattery(253);
+        happyNode.sendSignalStrength(254);
+        prev_t = t;
+    }
+
+    int8_t wakeupReson = sleep(10000);
     if (wakeupReson == MY_WAKE_UP_BY_TIMER){
         happySend(msgVirt.set((uint16_t)rand()));
     }
-    else if (wakeupReson == PIN_1) happySend(msgPin1.set(!msgPin1.getBool()));
-    else if (wakeupReson == PIN_2) happySend(msgPin2.set(!msgPin2.getBool()));
 }
 
 void receive(const MyMessage & message){
