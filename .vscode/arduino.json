@@ -3,6 +3,6 @@
     "output": "./ArduinoOutput",
     "configuration": "chip=xxaa,bootcode=none,lfclk=lfxo",
     "sketch": "mysEfektaLib.ino",
-    "port": "COM6",
+    "port": "COM15",
     "programmer": "J-Link"
 }

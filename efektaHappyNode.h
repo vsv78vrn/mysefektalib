@@ -42,7 +42,9 @@ extern class CHappyNode{
 
     bool isBatteryVoltagePresent;
     bool isSignalStrengthPresent;
-    bool isResetReasonPresent;
+#ifdef MY_SEND_RESET_REASON    
+    bool isResetReasonSend = false;
+#endif
 
     const uint8_t idAddr;
     #define parentIdAddr (idAddr+1)
@@ -89,7 +91,7 @@ public:
     bool sendMsg(MyMessage &, const uint8_t = 1);
     bool sendSignalStrength(uint8_t );
     bool sendBattery(int16_t = -1);
-    void sendResetReason();
+    bool sendResetReason();
 
     friend void presentation();
 } happyNode;
@@ -168,7 +170,7 @@ bool CHappyNode::checkAck(const MyMessage &message){
 }
 
 #ifdef MY_SEND_RESET_REASON
-void CHappyNode::sendResetReason(){
+bool CHappyNode::sendResetReason(){
     String reason;
 
 #ifdef MY_RESET_REASON_TEXT
@@ -188,10 +190,9 @@ void CHappyNode::sendResetReason(){
 
     uint16_t nTry = 0;
     bool isSend = false;
-    while (!isSend && nTry++ < 10) {
-        isSend = sendMsg(MyMessage(MY_SEND_RESET_REASON, V_VAR2).set(reason.c_str()));
-    }
+    isSend = sendMsg(MyMessage(MY_SEND_RESET_REASON, V_VAR2).set(reason.c_str()));
     if (isSend) NRF_POWER->RESETREAS = (0xFFFFFFFF);
+    return isSend;
 }
 #endif
 
@@ -235,7 +236,7 @@ bool CHappyNode::sendSignalStrength(uint8_t sensorID){
         prevSignalRSSI = signalRSSI;
 #ifndef MY_SEND_RSSI
         if (!isSignalStrengthPresent) isSignalStrengthPresent = performDuty(sensorID, S_CUSTOM, PSTR("Signal quality in %")); 
-#endif
+#endif 
         return sendMsg(MyMessage(sensorID, V_VAR1).set(constrain(map(signalRSSI, -85, -40, 0, 100), 0, 100)));
     }
     return true;
@@ -283,11 +284,6 @@ void CHappyNode::config() {
     else {
         updateNodeParam();       
     }
-#ifdef MY_SEND_RESET_REASON
-    sendResetReason();
-#endif    
-    //     if (isTransportReady()){ // законектилась
-     // }
 }
 
 void CHappyNode::updateNodeParam(){
@@ -340,6 +336,9 @@ void CHappyNode::run(){
 #ifdef MY_SEND_BATTERY
         sendBattery(-1);
 #endif
+#ifdef MY_SEND_RESET_REASON
+        if (!isResetReasonSend) isResetReasonSend = sendResetReason();
+#endif    
     }
     isReceivedEcho = false;
 }
