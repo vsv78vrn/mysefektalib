@@ -38,6 +38,10 @@ extern class CHappyNode{
     uint8_t maxNoEchoSendTry = 5;
     uint8_t maxNoParentTry = 0;
 
+    bool isBatteryVoltagePresent;
+    bool isSignalStrengthPresent;
+    bool isResetReasonPresent;
+
     const uint8_t idAddr;
     #define parentIdAddr (idAddr+1)
     #define distanceGWAddr (idAddr+2)
@@ -51,6 +55,7 @@ extern class CHappyNode{
     bool isReceivedEcho = true;
     uint8_t noEchoTry = 0;
     uint8_t noParentTry = 0;
+    bool isHappyMode = false;
     
     bool isSendAck, isPresentAck;
 
@@ -61,10 +66,12 @@ extern class CHappyNode{
  
     uint8_t *sensorsPresentComplete = nullptr;
     struct {unsigned parent:1; unsigned sketch:1;} isPresentComplete; 
+    bool performDuty(const uint8_t, const mysensors_sensor_t, const char *, bool = true);
     bool getPresentComplete();
     void loadPresentState();
     void savePresentState();
     void resetPresentState();
+    void updateNodeParam();
 public:
     enum try_num_mode_e {TRY_PRESENT, TRY_SEND_NO_ECHO, TRY_NO_PARENT};
     CHappyNode(uint8_t idAddr_) : idAddr(idAddr_), myTransportWaitReady(MY_TRANSPORT_WAIT_READY_MS){}
@@ -74,12 +81,12 @@ public:
     void presentationStart(); 
     void presentationFinish();
     void sendSketchInform(const char *, const char *);
-    void perform(const uint8_t, const mysensors_sensor_t, const char *);
+    inline void perform(const uint8_t id, const mysensors_sensor_t type, const char *s) { performDuty(id, type, s, false); }
     bool checkAck(const MyMessage &);
     void run();
     bool sendMsg(MyMessage &, const uint8_t = 1);
-    bool sendSignalStrength();
-    bool sendBattery();
+    bool sendSignalStrength(uint8_t );
+    bool sendBattery(int16_t = -1);
     void sendResetReason();
 } happyNode;
 
@@ -113,11 +120,11 @@ void CHappyNode::sendSketchInform(const char *sketch_name, const char *sketch_ve
     }
 }
 
-void CHappyNode::perform(const uint8_t childSensorId, const mysensors_sensor_t sensorType, const char *description){
-    if (sensorsPresentComplete[sensorsCounter/8] & (1 << sensorsCounter %8)) {
+bool CHappyNode::performDuty(const uint8_t childSensorId, const mysensors_sensor_t sensorType, const char *description, bool isDuty){
+    if (!isDuty && sensorsPresentComplete[sensorsCounter/8] & (1 << sensorsCounter %8)) {
         CORE_DEBUG(PSTR(">>>>>>>> MyS: Allready present SENSOR %i %s (SC %i, SPC %i, BN %i, bN %i)\n"), childSensorId, description, sensorsCounter, sensorsPresentComplete[sensorsCounter/8], sensorsCounter/8, 1 << sensorsCounter % 8);
         sensorsCounter++;
-        return;
+        return true;
     }
 
     isPresentAck = false;
@@ -131,14 +138,15 @@ void CHappyNode::perform(const uint8_t childSensorId, const mysensors_sensor_t s
             wait(50);
         }
     }
-    sensorsPresentComplete[sensorsCounter/8] |= (isPresentAck << sensorsCounter %8);
+    if (!isDuty) sensorsPresentComplete[sensorsCounter/8] |= (isPresentAck << sensorsCounter %8);
     if (!isPresentAck) {
         CORE_DEBUG(PSTR(">>>>>>>> MyS: ERR PRESENT SENSOR %i %s\n"), childSensorId, description);
     }
     else {
         CORE_DEBUG(PSTR(">>>>>>>> MyS: OK PRESENT SENSOR %i %s\n"), childSensorId, description);
     }
-    sensorsCounter++;
+    if (!isDuty) sensorsCounter++;
+    return isPresentAck;
 }
 
 bool CHappyNode::checkAck(const MyMessage &message){
@@ -152,18 +160,11 @@ bool CHappyNode::checkAck(const MyMessage &message){
         isSendAck = true;
         return true;
     }
-    // if (mGetCommand(message) == C_INTERNAL && message.getType() == I_BATTERY_LEVEL && message.isEcho()) {
-    //     //CORE_DEBUG(PSTR(">>>>>>>> MyS: ACK OF THE BATT LEVEL RECEIVED \n"));
-    //     isSendAck = true;
-    //     return true;
-    //}
     return false;
 }
 
 #ifdef MY_SEND_RESET_REASON
 void CHappyNode::sendResetReason(){
-    uint16_t nTry = 0;
-    bool isSend = false;
     String reason;
 
 #ifdef MY_RESET_REASON_TEXT
@@ -181,6 +182,8 @@ void CHappyNode::sendResetReason(){
     reason = NRF_POWER->RESETREAS;
 #endif
 
+    uint16_t nTry = 0;
+    bool isSend = false;
     while (!isSend && nTry++ < 10) {
         isSend = sendMsg(MyMessage(MY_SEND_RESET_REASON, V_VAR2).set(reason.c_str()));
     }
@@ -188,8 +191,7 @@ void CHappyNode::sendResetReason(){
 }
 #endif
 
-#ifdef MY_SEND_BATTERY
-bool CHappyNode::sendBattery(){
+bool CHappyNode::sendBattery(int16_t sensorID){
     wait(1000);
 
     static uint16_t prevBatteryVoltage = 0;
@@ -204,26 +206,36 @@ bool CHappyNode::sendBattery(){
             isSendAck = false;
             wait(2500, C_INTERNAL, I_BATTERY_LEVEL);
             result = isSendAck;
+            CORE_DEBUG(PSTR("Send battery is %s\n"), result ? PSTR("OK.") : PSTR("Err!"));
         }
 #ifdef MY_SEND_BATTERY_VOLTAGE      
         result = sendMsg(MyMessage(MY_SEND_BATTERY, V_VOLTAGE).set((float)batteryVoltage/1000., 2)) && result;
-#endif        
-    }
+#else
+        if (sensorID != -1){
+            if (!isBatteryVoltagePresent) isBatteryVoltagePresent = performDuty(sensorID, S_MULTIMETER, PSTR("Battery voltage"));    
+            result = sendMsg(MyMessage(sensorID, V_VOLTAGE).set((float)batteryVoltage/1000., 2)) && result;    
+        }
+#endif  
+      
+    }    
     return result;
 }
-#endif
 
+bool CHappyNode::sendSignalStrength(uint8_t sensorID){
 #ifdef MY_SEND_RSSI
-bool CHappyNode::sendSignalStrength(){
+    sensorID = MY_SEND_RSSI;
+#endif
     static int16_t prevSignalRSSI = INVALID_RSSI;
     int16_t signalRSSI = transportGetReceivingRSSI();
     if (signalRSSI != prevSignalRSSI){
         prevSignalRSSI = signalRSSI;
-        return sendMsg(MyMessage(MY_SEND_RSSI, V_VAR1).set(constrain(map(signalRSSI, -85, -40, 0, 100), 0, 100)));
+#ifndef MY_SEND_RSSI
+        if (!isSignalStrengthPresent) isSignalStrengthPresent = performDuty(sensorID, S_CUSTOM, PSTR("Signal quality in %")); 
+#endif
+        return sendMsg(MyMessage(sensorID, V_VAR1).set(constrain(map(signalRSSI, -85, -40, 0, 100), 0, 100)));
     }
     return true;
 }
-#endif
 
 void CHappyNode::init(){
     if (hwReadConfig(EEPROM_NODE_ID_ADDRESS) == 0){
@@ -261,42 +273,30 @@ void CHappyNode::config() {
 #endif        
     }
     else  if (!isTransportReady()) { // пожилая нода
-            _transportConfig.nodeId = loadState(idAddr); //myid;
-            _transportConfig.parentNodeId = loadState(parentIdAddr);
-            _transportConfig.distanceGW = loadState(distanceGWAddr);
             setHappyMode();
             noParentTry++;
-            CORE_DEBUG(PSTR(">>>>>>>> MyS: TRANSPORT ERR. PARAMS LOAD FROM EEPROM\n"));
-            CORE_DEBUG(PSTR(">>>>>>>> MyS: ENTERY HAPPY MODE\n"));
+    }
+    else {
+        updateNodeParam();       
     }
 #ifdef MY_SEND_RESET_REASON
     sendResetReason();
 #endif    
     //     if (isTransportReady()){ // законектилась
-    //         if (getNodeId() != loadState(idAddr)){ // сменился адресс ноды
-    //             saveState(idAddr, getNodeId());
-    //         }
-    //         if (getParentNodeId() != loadState(parentIdAddr)){ //сменился родитель
-    //             saveState(parentIdAddr, getParentNodeId());
-    //             present_only_parent(); //презентуем только нового родителя
-    //          }
-    //         if ( getDistanceGW()!= loadState(distanceGWAddr)){ // сменился гейт
-    //             presentNode(); // полная презентация по новой
-    //             saveState(presentCompleteAddr, isPresentComlete);
-    //             saveState(distanceGWAddr, _transportConfig.distanceGW);
-    //         }
-    //     }
-    //     else{ // нету конекта
-    //         // flag_fcount = 1;
-    //         // err_delivery_beat = 5;
-    //         _transportConfig.nodeId = loadState(idAddr); //myid;
-    //         _transportConfig.parentNodeId = loadState(parentIdAddr);
-    //         _transportConfig.distanceGW = loadState(distanceGWAddr);
-    //         myParrent = _transportConfig.parentNodeId;
-    //         happy_node_mode();
-    //         gateway_fail();/***** del ******/
-    //     }
-    // }
+     // }
+}
+
+void CHappyNode::updateNodeParam(){
+    if (getNodeId() != loadState(idAddr)){ // сменился адресс ноды
+        saveState(idAddr, getNodeId());
+    }
+    if (getParentNodeId() != loadState(parentIdAddr)){ //сменился родитель
+        saveState(parentIdAddr, getParentNodeId());
+        isPresentComplete.parent = false;
+        }
+    if ( getDistanceGW()!= loadState(distanceGWAddr)){ // сменился путь
+        saveState(distanceGWAddr, _transportConfig.distanceGW);
+    }
 }
 
 void CHappyNode::presentationOnlyParent(){
@@ -307,38 +307,37 @@ void CHappyNode::presentationOnlyParent(){
 }
 
 void CHappyNode::setHappyMode() {
-  _transportSM.findingParentNode = false;
-  _transportSM.transportActive = true;
-  _transportSM.uplinkOk = true;
-  _transportSM.pingActive = false;
-  transportSwitchSM(stReady);
-  _transportSM.failureCounter = 0;
+    CORE_DEBUG(PSTR(">>>>>>>> MyS: TRANSPORT ERR. PARAMS LOAD FROM EEPROM\n"));
+    CORE_DEBUG(PSTR(">>>>>>>> MyS: ENTERY HAPPY MODE\n"));
+    _transportConfig.nodeId = loadState(idAddr); //myid;
+    _transportConfig.parentNodeId = loadState(parentIdAddr);
+    _transportConfig.distanceGW = loadState(distanceGWAddr);
+    _transportSM.findingParentNode = false;
+    _transportSM.transportActive = true;
+    _transportSM.uplinkOk = true;
+    _transportSM.pingActive = false;
+    transportSwitchSM(stReady);
+    _transportSM.failureCounter = 0;
+    isHappyMode = true;
 }
 
 void CHappyNode::run(){
     if (isTransportReady() == true) { 
         if (!isReceivedEcho) noEchoTry++; else noEchoTry = 0;
-        if (noEchoTry > maxNoEchoSendTry){
+        if (noEchoTry > maxNoEchoSendTry || _transportSM.failureCounter > 0 ){
+            if (!isHappyMode) setHappyMode();
             checkParent();
             if (noParentTry > maxNoParentTry && maxNoParentTry > 0) hwReboot();
         }
         if (!getPresentComplete()) presentation();
 #ifdef MY_SEND_RSSI
-        sendSignalStrength();
+        sendSignalStrength(-1);
 #endif
 #ifdef MY_SEND_BATTERY
-        sendBattery();
+        sendBattery(-1);
 #endif
     }
     isReceivedEcho = false;
-
-    if (_transportSM.failureCounter > 0 ) {
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: ENTERY HAPPY MODE\n"));
-        _transportConfig.parentNodeId = loadState(parentIdAddr);
-        _transportConfig.nodeId = loadState(idAddr); //myid;
-        _transportConfig.distanceGW = loadState(distanceGWAddr);
-        setHappyMode();
-     }
 }
 
 void CHappyNode::checkParent(){
@@ -347,17 +346,22 @@ void CHappyNode::checkParent(){
     _sendRoute(build(_msg, 255, NODE_SENSOR_ID, C_INTERNAL, I_FIND_PARENT_REQUEST).set(""));
     wait(1500, C_INTERNAL, I_FIND_PARENT_RESPONSE);
     if (_msg.sensor == 255 && mGetCommand(_msg) == C_INTERNAL && _msg.type == I_FIND_PARENT_RESPONSE){
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: PARENT RESPONSE FOUND\n"));
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: Parent = %i (%i)\n"), _transportConfig.parentNodeId, _msg.getSender());
+        CORE_DEBUG(PSTR(">>>>>>>> MyS: Parent RESPONSE FOUND = %i (%i)\n"), _transportConfig.parentNodeId, _msg.getSender());
         transportSwitchSM(stParent);
-        noParentTry = 0;
+        CORE_DEBUG(PSTR(">>>>>>>> MyS: Parent WAIT PING-PONG\n")); 
+        wait(3500, C_INTERNAL,  I_PONG);
+        if (_msg.sensor == 255 && mGetCommand(_msg) == C_INTERNAL && _msg.type == I_PONG){
+            CORE_DEBUG(PSTR(">>>>>>>> PONG FOUND!\n"));
+            updateNodeParam();
+            noParentTry = 0;
+            isHappyMode = false;
+            return;
+        }
      }
-    else{
-        _transportSM.findingParentNode = false;
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: PARENT RESPONSE NOT FOUND\n"));
-        _transportSM.failedUplinkTransmissions = 0;
-        noParentTry++;
-    }
+    _transportSM.findingParentNode = false;
+    CORE_DEBUG(PSTR(">>>>>>>> MyS: PARENT RESPONSE NOT FOUND\n"));
+    _transportSM.failedUplinkTransmissions = 0;
+    noParentTry++;
 }
 
 bool CHappyNode::sendMsg(MyMessage& message, const uint8_t tryNum){
@@ -394,11 +398,11 @@ bool CHappyNode::sendMsg(MyMessage& message, const uint8_t tryNum){
 
 bool CHappyNode::getPresentComplete(){
     bool result = isPresentComplete.sketch && isPresentComplete.parent;
-    CORE_DEBUG(PSTR(">>>>>>>> MyS: node present sketch is %s / parent is %s\n"), isPresentComplete.sketch ? PSTR("OK") : PSTR("ERR"), isPresentComplete.parent ? PSTR("OK") : PSTR("ERR"));
+    //CORE_DEBUG(PSTR(">>>>>>>> MyS: node present sketch is %s / parent is %s\n"), isPresentComplete.sketch ? PSTR("OK") : PSTR("ERR"), isPresentComplete.parent ? PSTR("OK") : PSTR("ERR"));
     if (!result) return false;
     for(int i = 0; i < numSensors; i++ ) {
         result = sensorsPresentComplete[ i /8] & (1 << i % 8);
-        CORE_DEBUG(PSTR(">>>>>>>> MyS: node present sensor %i ==> %s\n"), i, result ? PSTR("OK") : PSTR("ERR"));
+        //CORE_DEBUG(PSTR(">>>>>>>> MyS: node present sensor %i ==> %s\n"), i, result ? PSTR("OK") : PSTR("ERR"));
         if (!result) return false;
     }
     return true;
