@@ -267,6 +267,10 @@ void CHappyNode::init(){
 
 void CHappyNode::config() {
     if (myTransportWaitReady == 0){ //Только новой ноде
+        if (getNodeId() == 255 || getParentNodeId() == 255){
+            CORE_DEBUG(PSTR("!!!!!!!!!!!! Invalid transport config response!\n"));
+            hwReboot();
+        }    
         saveState(idAddr, getNodeId());
         saveState(parentIdAddr, getParentNodeId());
         saveState(distanceGWAddr, getDistanceGW());
@@ -282,7 +286,14 @@ void CHappyNode::config() {
             noParentTry++;
     }
     else {
-        updateNodeParam();       
+        if (getNodeId() == 255 || getParentNodeId() == 255){
+            CORE_DEBUG(PSTR("!!!!!!!!!!!! Invalid transport config response!\n"));
+            setHappyMode();
+            noParentTry++;
+        }
+        else {
+            updateNodeParam();       
+        }
     }
 }
 
@@ -355,12 +366,19 @@ void CHappyNode::checkParent(){
         wait(3500, C_INTERNAL,  I_PONG);
         if (_msg.sensor == 255 && mGetCommand(_msg) == C_INTERNAL && _msg.type == I_PONG){
             CORE_DEBUG(PSTR(">>>>>>>> PONG FOUND!\n"));
-            updateNodeParam();
-            noParentTry = 0;
-            isHappyMode = false;
-            return;
+            if (getNodeId() == 255 || getParentNodeId() == 255){
+                CORE_DEBUG(PSTR("!!!!!!!!!!!! Invalid transport config response!\n"));
+                setHappyMode();
+            }
+            else {
+                updateNodeParam();
+                noParentTry = 0;
+                isHappyMode = false;
+                return;
+            }
         }
         else {
+            CORE_DEBUG(PSTR("!!!!!!!!!!!! PONG not found!\n"));
             setHappyMode();
         }
      }
