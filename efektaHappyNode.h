@@ -10,6 +10,8 @@ Resistant to connection quality Node
 */
 #pragma once
 
+#include "app_util.h"
+
 #ifdef MY_PASSIVE_NODE
 #error "NOT FOR PASSIVE NODE"
 #endif
@@ -40,7 +42,9 @@ extern class CHappyNode{
 
     bool isBatteryVoltagePresent;
     bool isSignalStrengthPresent;
-    bool isResetReasonPresent;
+#ifdef MY_SEND_RESET_REASON    
+    bool isResetReasonSend = false;
+#endif
 
     const uint8_t idAddr;
     #define parentIdAddr (idAddr+1)
@@ -66,6 +70,8 @@ extern class CHappyNode{
  
     uint8_t *sensorsPresentComplete = nullptr;
     struct {unsigned parent:1; unsigned sketch:1;} isPresentComplete; 
+    void presentationStart(); 
+    void presentationFinish();
     bool performDuty(const uint8_t, const mysensors_sensor_t, const char *, bool = true);
     bool getPresentComplete();
     void loadPresentState();
@@ -78,8 +84,6 @@ public:
     void init();
     void setMaxTry(const try_num_mode_e , const uint8_t );
     void config();
-    void presentationStart(); 
-    void presentationFinish();
     void sendSketchInform(const char *, const char *);
     inline void perform(const uint8_t id, const mysensors_sensor_t type, const char *s) { performDuty(id, type, s, false); }
     bool checkAck(const MyMessage &);
@@ -87,7 +91,9 @@ public:
     bool sendMsg(MyMessage &, const uint8_t = 1);
     bool sendSignalStrength(uint8_t );
     bool sendBattery(int16_t = -1);
-    void sendResetReason();
+    bool sendResetReason();
+
+    friend void presentation();
 } happyNode;
 
 void CHappyNode::sendSketchInform(const char *sketch_name, const char *sketch_version){
@@ -164,7 +170,7 @@ bool CHappyNode::checkAck(const MyMessage &message){
 }
 
 #ifdef MY_SEND_RESET_REASON
-void CHappyNode::sendResetReason(){
+bool CHappyNode::sendResetReason(){
     String reason;
 
 #ifdef MY_RESET_REASON_TEXT
@@ -184,10 +190,9 @@ void CHappyNode::sendResetReason(){
 
     uint16_t nTry = 0;
     bool isSend = false;
-    while (!isSend && nTry++ < 10) {
-        isSend = sendMsg(MyMessage(MY_SEND_RESET_REASON, V_VAR2).set(reason.c_str()));
-    }
+    isSend = sendMsg(MyMessage(MY_SEND_RESET_REASON, V_VAR2).set(reason.c_str()));
     if (isSend) NRF_POWER->RESETREAS = (0xFFFFFFFF);
+    return isSend;
 }
 #endif
 
@@ -231,7 +236,7 @@ bool CHappyNode::sendSignalStrength(uint8_t sensorID){
         prevSignalRSSI = signalRSSI;
 #ifndef MY_SEND_RSSI
         if (!isSignalStrengthPresent) isSignalStrengthPresent = performDuty(sensorID, S_CUSTOM, PSTR("Signal quality in %")); 
-#endif
+#endif 
         return sendMsg(MyMessage(sensorID, V_VAR1).set(constrain(map(signalRSSI, -85, -40, 0, 100), 0, 100)));
     }
     return true;
@@ -279,11 +284,6 @@ void CHappyNode::config() {
     else {
         updateNodeParam();       
     }
-#ifdef MY_SEND_RESET_REASON
-    sendResetReason();
-#endif    
-    //     if (isTransportReady()){ // законектилась
-     // }
 }
 
 void CHappyNode::updateNodeParam(){
@@ -336,6 +336,9 @@ void CHappyNode::run(){
 #ifdef MY_SEND_BATTERY
         sendBattery(-1);
 #endif
+#ifdef MY_SEND_RESET_REASON
+        if (!isResetReasonSend) isResetReasonSend = sendResetReason();
+#endif    
     }
     isReceivedEcho = false;
 }
@@ -356,6 +359,9 @@ void CHappyNode::checkParent(){
             noParentTry = 0;
             isHappyMode = false;
             return;
+        }
+        else {
+            setHappyMode();
         }
      }
     _transportSM.findingParentNode = false;
@@ -478,9 +484,13 @@ void presentation(){
      happyPresentation();
 #ifdef MY_SEND_RSSI
     happyNode.perform(MY_SEND_RSSI, S_CUSTOM, PSTR("Signal quality in %"));
+#else
+    happyNode.isSignalStrengthPresent = false; 
 #endif
 #ifdef MY_SEND_BATTERY_VOLTAGE
     happyNode.perform(MY_SEND_BATTERY, S_MULTIMETER, PSTR("Battery voltage"));
+#else
+    happyNode.isBatteryVoltagePresent = false;  
 #endif
 #ifdef MY_SEND_RESET_REASON
     happyNode.perform(MY_SEND_RESET_REASON, S_CUSTOM, PSTR("Reset reason"));
