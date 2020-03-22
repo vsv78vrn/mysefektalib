@@ -8,6 +8,8 @@
 Library GPIOT
 NRF5x lower power interruble in sleep.
 */
+#ifndef EFEKTA_GPIOT_H
+#define EFEKTA_GPIOT_H
 
 extern "C" {
 #include "app_gpiote.h"
@@ -114,3 +116,5 @@ int8_t CDream::run(uint32_t sleep_time, bool isSmartSleep){
     if (retSleep == MY_SLEEP_NOT_POSSIBLE) return MY_SLEEP_NOT_POSSIBLE;
     if (wakeUpRegim > 0) return wakeUpRegim; else return MY_WAKE_UP_BY_TIMER;
 }
+
+#endif

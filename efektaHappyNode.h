@@ -46,6 +46,9 @@ extern class CHappyNode{
     bool isResetReasonSend = false;
 #endif
 
+    uint32_t smartIntervalMS = 3600000L;
+    uint32_t wdtIntervalMS = 0;
+
     const uint8_t idAddr;
     #define parentIdAddr (idAddr+1)
     #define distanceGWAddr (idAddr+2)
@@ -78,6 +81,10 @@ extern class CHappyNode{
     void savePresentState();
     void resetPresentState();
     void updateNodeParam();
+
+    bool sendResetReason();
+
+    int8_t internalSmartSleep(const uint32_t , const bool );
 public:
     enum try_num_mode_e {TRY_PRESENT, TRY_SEND_NO_ECHO, TRY_NO_PARENT};
     CHappyNode(uint8_t idAddr_) : idAddr(idAddr_), myTransportWaitReady(MY_TRANSPORT_WAIT_READY_MS){}
@@ -91,7 +98,14 @@ public:
     bool sendMsg(MyMessage &, const uint8_t = 1);
     bool sendSignalStrength(uint8_t );
     bool sendBattery(int16_t = -1);
-    bool sendResetReason();
+    void setSmartSleep(const uint32_t , const uint32_t = 0);
+
+    inline void startWDT(const uint32_t wdtIntervalMS_) { wdt_enable(wdtIntervalMS_); wdtIntervalMS = wdtIntervalMS_;}
+
+    inline int8_t smartSleep(const uint32_t sleepingMS) {return internalSmartSleep(sleepingMS, false); }
+#ifdef EFEKTA_GPIOT_H    
+    inline int8_t smartDream(const uint32_t sleepingMS) {return internalSmartSleep(sleepingMS, true); } 
+#endif
 
     friend void presentation();
 } happyNode;
@@ -167,6 +181,42 @@ bool CHappyNode::checkAck(const MyMessage &message){
         return true;
     }
     return false;
+}
+
+void CHappyNode::setSmartSleep(const uint32_t smartIntervalMS_, const uint32_t wdtIntervalMS_){
+    smartIntervalMS = smartIntervalMS_;
+    if (wdtIntervalMS_ > 0) wdtIntervalMS = wdtIntervalMS_;
+}
+
+int8_t CHappyNode::internalSmartSleep(const uint32_t sleepingMS, const bool isInterruptableSleep){
+    uint32_t t = millis();
+    static uint32_t resultSmartSleepMS = t + smartIntervalMS;
+    const uint32_t resultSleepingMS = t + sleepingMS;
+
+    wdt_reset();
+
+    while (true){
+        uint32_t resultWDTSleep = t + wdtIntervalMS;
+        uint32_t sleepTimeMS = resultSleepingMS;
+        if (wdtIntervalMS > 0){
+            sleepTimeMS = min(resultWDTSleep, sleepTimeMS);
+        }
+        if (smartIntervalMS > 0) {
+            sleepTimeMS =  min(resultSmartSleepMS, sleepTimeMS);   
+        }
+#ifdef EFEKTA_GPIOT_H        
+        int8_t result = isInterruptableSleep ? interruptedSleep.run(sleepTimeMS - t, false) : sleep(sleepTimeMS - t, false);
+#else
+        int8_t result = sleep(sleepTimeMS - t, false);
+#endif        
+        wdt_reset();
+        t = millis();
+        if (smartIntervalMS > 0 && t >= resultSmartSleepMS){
+            if ( sendHeartbeat() ) resultSmartSleepMS = t + smartIntervalMS;    
+        }
+        if (result == MY_SLEEP_NOT_POSSIBLE || result != MY_WAKE_UP_BY_TIMER) return result;
+        if (t >= resultSleepingMS) return result;
+    }
 }
 
 #ifdef MY_SEND_RESET_REASON

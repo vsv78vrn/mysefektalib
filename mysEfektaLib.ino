@@ -31,6 +31,7 @@ int16_t myTransportComlpeteMS;
 
 #include <MySensors.h>
 
+//#include "efektaGpiot.h"
 #include "efektaHappyNode.h"
 
 MyMessage msgVirt(CHILD_ID_VIRT, V_VAR);
@@ -62,7 +63,7 @@ void loop() {
         prev_t = t;
     }
 
-    int8_t wakeupReson = sleep(10000);
+    int8_t wakeupReson = happyNode.smartSleep(10000);
     if (wakeupReson == MY_WAKE_UP_BY_TIMER){
         happySend(msgVirt.set((uint16_t)rand()));
     }
